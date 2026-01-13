@@ -190,36 +190,39 @@ async function trackProduct(
     try {
         console.log(`  📍 ${product.title.substring(0, 50)}...`);
 
-        // Set viewport (important for headless)
-        await page.setViewport({ width: 1920, height: 1080 });
-
-        // Set random user agent to avoid detection
-        await page.setUserAgent(getRandomUserAgent());
-
-        // Set extra headers
-        await page.setExtraHTTPHeaders({
-            'Accept-Language': 'es-CO,es;q=0.9,en;q=0.8',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        // Enable request interception to block heavy resources
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+            const resourceType = req.resourceType();
+            const blockedTypes = ['image', 'stylesheet', 'font', 'media', 'other'];
+            if (blockedTypes.includes(resourceType) || req.url().includes('google-analytics') || req.url().includes('doubleclick')) {
+                req.abort();
+            } else {
+                req.continue();
+            }
         });
 
-        // Navigate to product page
-        // 'load' is often better than 'networkidle2' on cloud servers to avoid stalling on trackers
-        await page.goto(product.original_url, {
-            waitUntil: 'load', 
-            timeout: 60000, 
-        });
-
-        // Wait for price element if it's not immediately there
+        // Navigate to product page - FASTER STRATEGY
         try {
-            await page.waitForSelector('.andes-money-amount__fraction, meta[itemprop="price"]', { timeout: 10000 });
+            await page.goto(product.original_url, {
+                waitUntil: 'domcontentloaded', // Fast: Fire as soon as HTML parses
+                timeout: 30000, 
+            });
         } catch (e) {
-            // Continue anyway, maybe it's a different selector
+            // Ignore navigation timeout if we have content
         }
 
-        // Final short delay for any last-second JS rendering
-        await new Promise(resolve => setTimeout(resolve, 3000)); 
+        // Smart Wait: Race between price found or bot detection
+        try {
+            await Promise.race([
+                page.waitForSelector('.andes-money-amount__fraction, meta[itemprop="price"]', { timeout: 10000 }),
+                page.waitForFunction(() => window.location.href.includes('account-verification') || window.location.href.includes('/gz/'), { timeout: 10000 })
+            ]);
+        } catch (e) {
+            // Timeout implies neither found immediately, proceed to check URL/Content anyway
+        }
 
-        // Check if we were redirected to verification page
+        // Check for bot detection redirect immediately
         const currentUrl = page.url();
         if (currentUrl.includes('account-verification') || currentUrl.includes('/gz/')) {
             console.log(`     🛑 Bot detection detected at URL Level: ${currentUrl}`);
@@ -230,7 +233,7 @@ async function trackProduct(
             };
         }
 
-        // Extract product data
+        // Extract product data immediately
         const data = await extractProductData(page, product.merchant);
 
         if (!data || !data.price) {
@@ -391,7 +394,7 @@ async function trackPrices(options: {
 
             // Wait between batches with random delay to avoid rate limiting
             if (i + concurrency < products.length) {
-                const delay = 3000 + Math.random() * 4000; // 3-7 seconds
+                const delay = 1000 + Math.random() * 2000; // 1-3 seconds (Reduced from 3-7s)
                 console.log(`\n⏳ Waiting ${(delay / 1000).toFixed(1)} seconds before next batch...\n`);
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
