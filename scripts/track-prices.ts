@@ -3,11 +3,28 @@
  * Uses Puppeteer to visit product pages and extract prices using extension adapters
  */
 
-import puppeteer, { Browser, Page } from 'puppeteer';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { Browser, Page } from 'puppeteer';
 import { getProductsToTrack, updateLastTracked, TrackingPriority } from './utils/tracking-priority.js';
 import { supabase, PriceSnapshotInsert } from './utils/db.js';
 import * as fs from 'fs';
 import * as path from 'path';
+
+// Add stealth plugin to avoid bot detection
+puppeteer.use(StealthPlugin());
+
+// User agent rotation to avoid detection
+const USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
+];
+
+function getRandomUserAgent(): string {
+    return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+}
 
 interface TrackingResult {
     productId: string;
@@ -133,10 +150,8 @@ async function trackProduct(
         // Set viewport (important for headless)
         await page.setViewport({ width: 1920, height: 1080 });
 
-        // Set user agent to avoid detection
-        await page.setUserAgent(
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        );
+        // Set random user agent to avoid detection
+        await page.setUserAgent(getRandomUserAgent());
 
         // Set extra headers
         await page.setExtraHTTPHeaders({
@@ -278,10 +293,11 @@ async function trackPrices(options: {
 
             results.push(...batchResults);
 
-            // Wait between batches to avoid rate limiting
+            // Wait between batches with random delay to avoid rate limiting
             if (i + concurrency < products.length) {
-                console.log(`\n⏳ Waiting 3 seconds before next batch...\n`);
-                await new Promise(resolve => setTimeout(resolve, 3000));
+                const delay = 3000 + Math.random() * 4000; // 3-7 seconds
+                console.log(`\n⏳ Waiting ${(delay / 1000).toFixed(1)} seconds before next batch...\n`);
+                await new Promise(resolve => setTimeout(resolve, delay));
             }
         }
 

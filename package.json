@@ -5,9 +5,14 @@
   "scripts": {
     "seed:products": "pnpm exec tsx scripts/seed-products.ts",
     "seed:csv": "pnpm exec tsx scripts/seed-from-csv.ts",
-    "track:prices": "pnpm exec tsx scripts/track-prices.ts"
+    "track:prices": "pnpm exec tsx scripts/track-prices.ts",
+    "cron:track": "pnpm exec tsx scripts/cron-tracker.ts"
   },
-  "keywords": ["price-tracking", "web-scraping", "puppeteer"],
+  "keywords": [
+    "price-tracking",
+    "web-scraping",
+    "puppeteer"
+  ],
   "license": "MIT",
   "packageManager": "pnpm@10.26.1",
   "devDependencies": {
@@ -17,5 +22,9 @@
     "puppeteer": "^24.35.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }

@@ -1,0 +1,14 @@
+services:
+  - type: cron
+    name: delay-price-tracker
+    env: node
+    schedule: "0 2 * * *"  # Run at 2 AM UTC daily
+    buildCommand: pnpm install --frozen-lockfile
+    startCommand: pnpm cron:track
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false  # Set in Render dashboard
+      - key: SUPABASE_ANON_KEY
+        sync: false  # Set in Render dashboard
