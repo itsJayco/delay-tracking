@@ -9,12 +9,16 @@ async function main() {
     console.log('🕐 Cron job started at:', new Date().toISOString());
     console.log('🌍 Environment:', process.env.NODE_ENV || 'development');
     
+    // Check for force mode from environment variable
+    const forceMode = process.env.FORCE_MODE === 'true';
+    console.log('🔧 Force mode:', forceMode ? 'ENABLED' : 'DISABLED');
+    
     try {
         // Run price tracking with production settings
         await trackPrices({
             limit: 1000, // Track up to 1000 products
             concurrency: 5, // 5 concurrent pages (good for cloud servers)
-            force: false, // Use intelligent priority filtering
+            force: forceMode, // Use force mode if FORCE_MODE=true in env
         });
         
         console.log('✅ Cron job completed successfully at:', new Date().toISOString());
