@@ -84,10 +84,27 @@ async function extractProductData(
 
                     return { price, currency: 'COP', title };
                 }
+
+                // Debug: return what we found
+                return {
+                    price: 0,
+                    currency: 'COP',
+                    title: document.title || 'Unknown',
+                    debug: {
+                        hasPriceMeta: !!document.querySelector('meta[itemprop="price"]'),
+                        hasPriceElement: !!document.querySelector('.andes-money-amount__fraction'),
+                        url: window.location.href,
+                    }
+                };
             }
 
             return null;
         }, merchant);
+
+        // Log debug info if price is 0
+        if (result && result.price === 0 && (result as any).debug) {
+            console.log(`     🐛 Debug info:`, (result as any).debug);
+        }
 
         return result;
     } catch (error) {
@@ -113,20 +130,28 @@ async function trackProduct(
     try {
         console.log(`  📍 ${product.title.substring(0, 50)}...`);
 
+        // Set viewport (important for headless)
+        await page.setViewport({ width: 1920, height: 1080 });
+
         // Set user agent to avoid detection
         await page.setUserAgent(
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         );
 
-        // Navigate to product page
-        await page.goto(product.original_url, {
-            waitUntil: 'networkidle2',
-            timeout: 30000,
+        // Set extra headers
+        await page.setExtraHTTPHeaders({
+            'Accept-Language': 'es-CO,es;q=0.9,en;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         });
 
+        // Navigate to product page
+        await page.goto(product.original_url, {
+            waitUntil: 'domcontentloaded', // Changed from networkidle2 for faster loading
+            timeout: 45000, // Increased timeout
+        });
 
-        // Wait a bit for dynamic content
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait longer for dynamic content to load
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Increased from 2s to 5s
 
         // Extract product data
         const data = await extractProductData(page, product.merchant);
