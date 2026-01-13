@@ -76,14 +76,16 @@ async function extractProductData(
             // For now, let's use a direct extraction approach for MercadoLibre
 
             if (merchantName === 'mercadolibre') {
-                // Try to find price in meta tags (most reliable)
+                // 1. Try to find price in meta tags (most reliable)
                 const metaPrice = document.querySelector<HTMLMetaElement>('meta[itemprop="price"]');
-                if (metaPrice?.content) {
+                if (metaPrice?.content && parseFloat(metaPrice.content) > 0) {
                     const price = parseFloat(metaPrice.content);
 
-                    // Get currency from domain
+                    // Get currency from domain or meta
+                    const metaCurr = document.querySelector<HTMLMetaElement>('meta[itemprop="priceCurrency"]');
+                    let currency = metaCurr?.content || 'COP';
+                    
                     const hostname = window.location.hostname;
-                    let currency = 'COP';
                     if (hostname.includes('.com.br')) currency = 'BRL';
                     else if (hostname.includes('.com.mx')) currency = 'MXN';
                     else if (hostname.includes('.com.ar')) currency = 'ARS';
@@ -96,16 +98,40 @@ async function extractProductData(
                     return { price, currency, title };
                 }
 
-                // Fallback: try to find price in DOM
-                const priceElement = document.querySelector('.andes-money-amount__fraction');
-                if (priceElement?.textContent) {
-                    const priceText = priceElement.textContent.replace(/[^0-9]/g, '');
-                    const price = parseFloat(priceText);
+                // 2. Try JSON-LD (Schema.org)
+                try {
+                    const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+                    for (const script of Array.from(scripts)) {
+                        const json = JSON.parse(script.textContent || '{}');
+                        const price = json.offers?.price || json.offers?.[0]?.price;
+                        if (price) {
+                            return { 
+                                price: parseFloat(price), 
+                                currency: json.offers?.priceCurrency || json.offers?.[0]?.priceCurrency || 'COP',
+                                title: json.name || document.title
+                            };
+                        }
+                    }
+                } catch (e) {}
 
-                    const titleMeta = document.querySelector<HTMLMetaElement>('meta[property="og:title"]');
-                    const title = titleMeta?.content || document.title;
+                // 3. Fallback: try different DOM selectors for price
+                const priceSelectors = [
+                    '.andes-money-amount__fraction',
+                    '[itemprop="price"]',
+                    '.ui-pdp-price__part .andes-money-amount__fraction',
+                    '.price-tag-fraction'
+                ];
 
-                    return { price, currency: 'COP', title };
+                for (const selector of priceSelectors) {
+                    const element = document.querySelector(selector);
+                    if (element?.textContent) {
+                        const priceText = element.textContent.replace(/[^0-9]/g, '');
+                        const price = parseFloat(priceText);
+                        if (price > 0) {
+                            const titleMeta = document.querySelector<HTMLMetaElement>('meta[property="og:title"]');
+                            return { price, currency: 'COP', title: titleMeta?.content || document.title };
+                        }
+                    }
                 }
 
                 // Debug: return what we found
@@ -114,10 +140,10 @@ async function extractProductData(
                     currency: 'COP',
                     title: document.title || 'Unknown',
                     debug: {
+                        url: window.location.href,
                         hasPriceMeta: !!document.querySelector('meta[itemprop="price"]'),
                         hasPriceElement: !!document.querySelector('.andes-money-amount__fraction'),
-                        url: window.location.href,
-                        html: document.body.innerHTML.substring(0, 500)
+                        htmlSummary: document.body.innerText.substring(0, 200)
                     }
                 };
             }
@@ -177,13 +203,21 @@ async function trackProduct(
         });
 
         // Navigate to product page
+        // 'load' is often better than 'networkidle2' on cloud servers to avoid stalling on trackers
         await page.goto(product.original_url, {
-            waitUntil: 'networkidle2', // Back to networkidle2 for stability
-            timeout: 60000, // Increased timeout
+            waitUntil: 'load', 
+            timeout: 60000, 
         });
 
-        // Wait extra for potential late redirects or dynamic overlays
-        await new Promise(resolve => setTimeout(resolve, 8000)); 
+        // Wait for price element if it's not immediately there
+        try {
+            await page.waitForSelector('.andes-money-amount__fraction, meta[itemprop="price"]', { timeout: 10000 });
+        } catch (e) {
+            // Continue anyway, maybe it's a different selector
+        }
+
+        // Final short delay for any last-second JS rendering
+        await new Promise(resolve => setTimeout(resolve, 3000)); 
 
         // Check if we were redirected to verification page
         const currentUrl = page.url();
