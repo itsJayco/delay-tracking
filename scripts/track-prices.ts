@@ -143,7 +143,7 @@ async function extractProductData(
                         url: window.location.href,
                         hasPriceMeta: !!document.querySelector('meta[itemprop="price"]'),
                         hasPriceElement: !!document.querySelector('.andes-money-amount__fraction'),
-                        htmlSummary: document.body.innerText.substring(0, 200)
+                        htmlSummary: document.body ? document.body.innerText.substring(0, 200) : 'No body content'
                     }
                 };
             }
@@ -185,20 +185,45 @@ async function trackProduct(
         title: string;
     }
 ): Promise<TrackingResult> {
-    const page = await browser.newPage();
+    let page: Page | null = null;
+    
+    try {
+        page = await browser.newPage();
+    } catch (e) {
+        console.error('❌ Failed to create new page:', e);
+        return {
+            productId: product.id,
+            success: false,
+            error: 'Failed to create page'
+        };
+    }
 
     try {
         console.log(`  📍 ${product.title.substring(0, 50)}...`);
 
+        // Set viewport (important for headless)
+        await page.setViewport({ width: 1920, height: 1080 });
+
+        // Set random user agent to avoid detection
+        await page.setUserAgent(getRandomUserAgent());
+
+        // Set extra headers
+        await page.setExtraHTTPHeaders({
+            'Accept-Language': 'es-CO,es;q=0.9,en;q=0.8',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        });
+
         // Enable request interception to block heavy resources
         await page.setRequestInterception(true);
         page.on('request', (req) => {
+            if (req.isInterceptResolutionHandled()) return;
+            
             const resourceType = req.resourceType();
             const blockedTypes = ['image', 'stylesheet', 'font', 'media', 'other'];
             if (blockedTypes.includes(resourceType) || req.url().includes('google-analytics') || req.url().includes('doubleclick')) {
-                req.abort();
+                req.abort().catch(() => {}); // Ignore abort errors
             } else {
-                req.continue();
+                req.continue().catch(() => {}); // Ignore continue errors
             }
         });
 
@@ -296,14 +321,25 @@ async function trackProduct(
             currency: data.currency,
         };
     } catch (error: any) {
-        console.error(`     ❌ Error:`, error.message);
+        // Only log serious errors, skip expected timeouts
+        if (!error.message.includes('Navigation timeout')) {
+            console.error(`     ❌ Error:`, error.message);
+        }
         return {
             productId: product.id,
             success: false,
             error: error.message,
         };
     } finally {
-        await page.close();
+        if (page) {
+            try {
+                // Disable interception to avoid pending request errors
+                await page.setRequestInterception(false).catch(() => {});
+                await page.close();
+            } catch (e) {
+                // Ignore close errors (Target closed, etc)
+            }
+        }
     }
 }
 
