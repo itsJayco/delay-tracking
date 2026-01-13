@@ -4,6 +4,7 @@ services:
     env: node
     schedule: "0 2 * * *"  # Run at 2 AM UTC daily
     buildCommand: pnpm install --frozen-lockfile
+    postBuildCommand: npx puppeteer browsers install chrome  # Install Chrome after build
     startCommand: pnpm cron:track
     envVars:
       - key: NODE_ENV
