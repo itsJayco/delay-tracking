@@ -15,17 +15,28 @@ const USER_AGENTS = [
 export class BrowserHardStrategy implements TrackingStrategy {
     name = 'BROWSER_HARD';
     private browser: Browser | null = null;
+    private initializationPromise: Promise<void> | null = null;
 
     async track(product: ProductToTrack): Promise<TrackingResult> {
         console.log(`🛡️ [BROWSER_HARD] Tracking ${product.title.substring(0, 40)}...`);
 
+        // Ensure browser is initialized (Singleton with Mutex)
         if (!this.browser) {
-            await this.initBrowser();
+            if (!this.initializationPromise) {
+                this.initializationPromise = this.initBrowser();
+            }
+            try {
+                await this.initializationPromise;
+            } catch (e) {
+                this.initializationPromise = null; // Reset on failure
+                throw e;
+            }
         }
 
         let page: Page | null = null;
 
         try {
+            // Reuse the single browser instance
             page = await this.browser!.newPage();
             
             // Viewport & Headers
@@ -108,22 +119,37 @@ export class BrowserHardStrategy implements TrackingStrategy {
         if (this.browser) {
             await this.browser.close();
             this.browser = null;
+            this.initializationPromise = null;
         }
     }
 
     private async initBrowser() {
+        console.log('   🔨 Launching Headless Browser (Singleton)...');
         const launchOptions = {
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled'],
+            args: [
+                '--no-sandbox', 
+                '--disable-setuid-sandbox', 
+                '--disable-dev-shm-usage', // Critical for container environments (Render/Docker)
+                '--disable-blink-features=AutomationControlled',
+                '--disable-gpu' // Save memory
+            ],
         };
 
         try {
             this.browser = await puppeteer.launch(launchOptions);
         } catch (error: any) {
             if (error.message.includes('Could not find Chrome')) {
-                console.log('⚠️ Chrome not found. Installing...');
+                console.log('   ⚠️ Chrome not found. Installing via npx...');
                 const { execSync } = await import('child_process');
-                execSync('npx puppeteer browsers install chrome', { stdio: 'inherit' });
+                // Use a try-catch for the install command itself
+                try {
+                    execSync('npx puppeteer browsers install chrome', { stdio: 'inherit' });
+                } catch (installError) {
+                   console.error('   ❌ Chrome install failed:', installError);
+                   throw installError;
+                }
+                
                 this.browser = await puppeteer.launch(launchOptions);
             } else {
                 throw error;
