@@ -95,8 +95,9 @@ function shouldTrackProduct(product: ProductWithPriority): boolean {
 export async function getProductsToTrack(options: {
     limit?: number;
     merchant?: string;
+    force?: boolean; // Bypass time filters for testing/manual runs
 } = {}): Promise<ProductWithPriority[]> {
-    const { limit = 100, merchant } = options;
+    const { limit = 100, merchant, force = false } = options;
 
     console.log('🎯 Fetching products for intelligent tracking...\n');
 
@@ -177,7 +178,9 @@ export async function getProductsToTrack(options: {
     }));
 
     // Filter products that should be tracked
-    const productsToTrack = productsWithPriority.filter(shouldTrackProduct);
+    const productsToTrack = force 
+        ? productsWithPriority // Force mode: track all products
+        : productsWithPriority.filter(shouldTrackProduct); // Normal mode: filter by time
 
     // Sort by priority (HIGH first, then MEDIUM, LOW, INACTIVE)
     const priorityOrder = {

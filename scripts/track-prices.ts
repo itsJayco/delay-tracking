@@ -209,17 +209,19 @@ async function trackPrices(options: {
     limit?: number;
     merchant?: string;
     concurrency?: number;
+    force?: boolean;
 } = {}) {
-    const { limit = 100, merchant, concurrency = 3 } = options;
+    const { limit = 100, merchant, concurrency = 3, force = false } = options;
 
     console.log('🚀 === INTELLIGENT PRICE TRACKING ===\n');
     console.log(`⚙️  Configuration:`);
     console.log(`   Limit: ${limit} products`);
     console.log(`   Merchant: ${merchant || 'all'}`);
-    console.log(`   Concurrency: ${concurrency} pages\n`);
+    console.log(`   Concurrency: ${concurrency} pages`);
+    console.log(`   Force mode: ${force ? 'YES (ignoring time filters)' : 'NO'}\n`);
 
     // Get products to track (prioritized)
-    const products = await getProductsToTrack({ limit, merchant });
+    const products = await getProductsToTrack({ limit, merchant, force });
 
     if (products.length === 0) {
         console.log('⚠️  No products to track');
@@ -298,6 +300,8 @@ if (require.main === module) {
         } else if (args[i] === '--concurrency' && args[i + 1]) {
             options.concurrency = parseInt(args[i + 1]);
             i++;
+        } else if (args[i] === '--force') {
+            options.force = true;
         }
     }
 
