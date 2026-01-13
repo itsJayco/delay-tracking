@@ -17,7 +17,7 @@ async function main() {
         // Run price tracking with production settings
         await trackPrices({
             limit: 1000, // Track up to 1000 products
-            concurrency: 5, // 5 concurrent pages (good for cloud servers)
+            concurrency: 2, // Reduced concurrency to be less aggressive
             force: forceMode, // Use force mode if FORCE_MODE=true in env
         });
         

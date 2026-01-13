@@ -62,10 +62,16 @@ function getAdapterCode(merchant: string): string {
 async function extractProductData(
     page: Page,
     merchant: string
-): Promise<{ price: number; currency: string; title: string } | null> {
+): Promise<{ price?: number; currency?: string; title?: string; isBotDetection?: boolean; url?: string } | null> {
     try {
         // Inject adapter and extract data
         const result = await page.evaluate((merchantName) => {
+            // Check for bot detection pages
+            const url = window.location.href;
+            if (url.includes('account-verification') || url.includes('/gz/')) {
+                return { isBotDetection: true, url };
+            }
+
             // This is a simplified version - we'll need to inject the actual adapter
             // For now, let's use a direct extraction approach for MercadoLibre
 
@@ -111,6 +117,7 @@ async function extractProductData(
                         hasPriceMeta: !!document.querySelector('meta[itemprop="price"]'),
                         hasPriceElement: !!document.querySelector('.andes-money-amount__fraction'),
                         url: window.location.href,
+                        html: document.body.innerHTML.substring(0, 500)
                     }
                 };
             }
@@ -118,14 +125,24 @@ async function extractProductData(
             return null;
         }, merchant);
 
+        // Handle bot detection result
+        if (result && (result as any).isBotDetection) {
+            console.log(`     🛑 Bot detection! Redirected to: ${(result as any).url}`);
+            return null;
+        }
+
         // Log debug info if price is 0
         if (result && result.price === 0 && (result as any).debug) {
-            console.log(`     🐛 Debug info:`, (result as any).debug);
+            console.log(`     🐛 Debug info (Price not found):`, (result as any).debug.url);
         }
 
         return result;
-    } catch (error) {
-        console.error(`Error extracting data:`, error);
+    } catch (error: any) {
+        if (error.message.includes('Execution context was destroyed')) {
+            console.warn(`     ⚠️  Execution context destroyed (likely navigation). Skipping product.`);
+        } else {
+            console.error(`     ❌ Error extracting data:`, error.message);
+        }
         return null;
     }
 }
@@ -161,12 +178,23 @@ async function trackProduct(
 
         // Navigate to product page
         await page.goto(product.original_url, {
-            waitUntil: 'domcontentloaded', // Changed from networkidle2 for faster loading
-            timeout: 45000, // Increased timeout
+            waitUntil: 'networkidle2', // Back to networkidle2 for stability
+            timeout: 60000, // Increased timeout
         });
 
-        // Wait longer for dynamic content to load
-        await new Promise(resolve => setTimeout(resolve, 5000)); // Increased from 2s to 5s
+        // Wait extra for potential late redirects or dynamic overlays
+        await new Promise(resolve => setTimeout(resolve, 8000)); 
+
+        // Check if we were redirected to verification page
+        const currentUrl = page.url();
+        if (currentUrl.includes('account-verification') || currentUrl.includes('/gz/')) {
+            console.log(`     🛑 Bot detection detected at URL Level: ${currentUrl}`);
+            return {
+                productId: product.id,
+                success: false,
+                error: 'Bot detection redirect',
+            };
+        }
 
         // Extract product data
         const data = await extractProductData(page, product.merchant);
@@ -194,8 +222,8 @@ async function trackProduct(
         if (!lastSnapshot || lastSnapshot.price !== data.price) {
             const snapshot: PriceSnapshotInsert = {
                 product_id: product.id,
-                price: data.price,
-                currency: data.currency,
+                price: data.price!,
+                currency: data.currency || 'COP',
                 source: 'automated-tracking',
             };
 
