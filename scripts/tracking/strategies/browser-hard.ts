@@ -77,8 +77,100 @@ export class BrowserHardStrategy implements TrackingStrategy {
                 return { productId: product.id, success: false, error: 'Bot detection (redirect)', strategyUsed: this.name };
             }
 
-            // Inject Adapter Logic & Extract
-            const extractedData = await page.evaluate(this.getAdapterLogic(), product.merchant);
+            // Inject Adapter Logic & Extract (INLINED TO FIX __name ERROR)
+            const extractedData = await page.evaluate((merchantName) => {
+                // --- ADAPTER CODE START (PURE JS) ---
+                // No external dependencies allowed here
+                
+                function parsePrice(raw: string) {
+                    if (!raw) return { raw: null, amount: null, currency: null };
+                    const match = raw.match(/([$€£¥A-Z]{1,3})?\s*([\d,.]+)/i);
+                    if (!match) return { raw, amount: null, currency: null };
+    
+                    let amountStr = match[2];
+                    const host = window.location.hostname;
+                    let currency = "USD"; 
+    
+                    if (host.includes(".com.br")) currency = "BRL";
+                    else if (host.includes(".com.co")) currency = "COP";
+                    else if (host.includes(".com.mx")) currency = "MXN";
+                    else if (host.includes(".cl")) currency = "CLP";
+                    
+                    if (["COP", "CLP", "ARS", "BRL"].includes(currency)) {
+                        if (amountStr.includes(".") && !amountStr.includes(",")) {
+                             amountStr = amountStr.replace(/\./g, ""); 
+                        } else if (amountStr.includes(",") && amountStr.includes(".")) {
+                            amountStr = amountStr.replace(/\./g, "").replace(",", ".");
+                        } else if (amountStr.includes(",")) {
+                             amountStr = amountStr.replace(",", ".");
+                        }
+                    }
+    
+                    const amount = parseFloat(amountStr);
+                    return { raw, amount: isNaN(amount) ? null : amount, currency };
+                }
+    
+                function extractSku(): string | null {
+                    const url = window.location.href;
+                    const urlMatch = url.match(/\/([A-Z]{3}-?\d+)-/);
+                    if (urlMatch) return urlMatch[1].replace("-", "");
+                    const input = document.querySelector<HTMLInputElement>("input[name='item_id']");
+                    return input?.value || null;
+                }
+    
+                function extractImage(): string | null {
+                    const og = document.querySelector<HTMLMetaElement>('meta[property="og:image"]');
+                    return og?.content || document.querySelector<HTMLImageElement>("img.ui-pdp-image")?.src || null;
+                }
+    
+                // Main Extraction
+                // if (merchantName !== 'mercadolibre') return null; // Relaxed check
+    
+                const title = document.querySelector("h1.ui-pdp-title")?.textContent?.trim() ||
+                              document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.content ||
+                              document.title.split("|")[0].trim();
+    
+                let price = { raw: null as string | null, amount: null as number | null, currency: null as string | null };
+    
+                // 1. Meta Tag
+                const metaPrice = document.querySelector<HTMLMetaElement>('meta[itemprop="price"]');
+                if (metaPrice?.content) {
+                    price = parsePrice(metaPrice.content);
+                    if (!price.currency || price.currency === 'USD') {
+                         if (window.location.hostname.includes('.co')) price.currency = 'COP';
+                    }
+                }
+    
+                // 2. DOM Fallback
+                if (price.amount === null) {
+                    const priceSelectors = [
+                        ".ui-pdp-price__second-line .andes-money-amount__fraction",
+                        ".ui-pdp-price--main .andes-money-amount__fraction",
+                        ".andes-money-amount__fraction"
+                    ];
+    
+                    for (const sel of priceSelectors) {
+                        const el = document.querySelector(sel);
+                        if (el && el.textContent) {
+                            const parent = el.closest(".andes-money-amount");
+                            const cents = parent?.querySelector(".andes-money-amount__cents")?.textContent;
+                            let textPrice = el.textContent;
+                            if (cents) textPrice += `,${cents}`;
+                            
+                            price = parsePrice(textPrice);
+                            if (price.amount !== null) break;
+                        }
+                    }
+                }
+    
+                return {
+                    title: title || 'Unknown',
+                    price,
+                    image: extractImage(),
+                    sku: extractSku()
+                };
+                // --- ADAPTER CODE END ---
+            }, product.merchant);
 
             if (!extractedData || !extractedData.price || extractedData.price.amount === null) {
                 return {
@@ -114,6 +206,7 @@ export class BrowserHardStrategy implements TrackingStrategy {
             }
         }
     }
+
 
     async close() {
         if (this.browser) {
