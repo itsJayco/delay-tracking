@@ -243,6 +243,43 @@ async function trackProduct(
 }
 
 /**
+ * Utility to launch browser with retry logic for cloud environments
+ */
+async function launchBrowser() {
+    const launchOptions = {
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-blink-features=AutomationControlled',
+        ],
+    };
+
+    try {
+        return await puppeteer.launch(launchOptions);
+    } catch (error) {
+        const errorMsg = (error as Error).message;
+        if (errorMsg.includes('Could not find Chrome') || errorMsg.includes('executablePath')) {
+            console.log('⚠️  Chrome not found. Attempting self-installation...');
+            
+            try {
+                const { execSync } = await import('child_process');
+                console.log('📥 Downloading Chrome...');
+                execSync('npx puppeteer browsers install chrome', { stdio: 'inherit' });
+                
+                console.log('🚀 Retrying browser launch...');
+                return await puppeteer.launch(launchOptions);
+            } catch (installError) {
+                console.error('❌ Self-installation failed:', installError);
+                throw error;
+            }
+        }
+        throw error;
+    }
+}
+
+/**
  * Main tracking function
  */
 async function trackPrices(options: {
@@ -270,10 +307,7 @@ async function trackPrices(options: {
 
     // Launch browser
     console.log('🌐 Launching browser...\n');
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
+    const browser = await launchBrowser();
 
     try {
         const results: TrackingResult[] = [];
