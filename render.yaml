@@ -3,7 +3,7 @@ services:
     name: delay-price-tracker
     env: node
     schedule: "0 2 * * *"  # Run at 2 AM UTC daily
-    buildCommand: pnpm install --frozen-lockfile && npx puppeteer browsers install chrome
+    buildCommand: pnpm install --frozen-lockfile && npx puppeteer browsers install chrome && ls -d puppeteer-cache || echo "Cache not found"
     startCommand: pnpm cron:track
     envVars:
       - key: NODE_ENV
