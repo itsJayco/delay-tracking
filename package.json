@@ -4,6 +4,7 @@
   "description": "Intelligent price tracking system for Delay",
   "scripts": {
     "seed:products": "pnpm exec tsx scripts/seed-products.ts",
+    "seed:csv": "pnpm exec tsx scripts/seed-from-csv.ts",
     "track:prices": "pnpm exec tsx scripts/track-prices.ts"
   },
   "keywords": ["price-tracking", "web-scraping", "puppeteer"],

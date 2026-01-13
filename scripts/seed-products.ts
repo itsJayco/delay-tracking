@@ -161,9 +161,9 @@ async function seedFromCSV(options: SeedOptions) {
     console.log('\n📄 === SEEDING FROM CSV FILE ===\n');
     console.log(`File: ${options.csvFile}`);
 
-    // Import URL parser and fetcher
+    // Import URL parser and Puppeteer fetcher
     const { parseUrlListCSV } = await import('./scrapers/url-list-import');
-    const { fetchMultipleProducts } = await import('./scrapers/fetch-product-data');
+    const { fetchMultipleProductsWithPuppeteer } = await import('./scrapers/puppeteer-fetch');
 
     // Extract URLs from CSV (ignoring all other data)
     const urls = parseUrlListCSV(options.csvFile);
@@ -187,10 +187,10 @@ async function seedFromCSV(options: SeedOptions) {
         return;
     }
 
-    // Fetch real product data from URLs
-    const products = await fetchMultipleProducts(limitedUrls, {
-        delay: 1000, // 1 second between batches
-        maxConcurrent: 3, // 3 concurrent requests per batch
+    // Fetch real product data from URLs using Puppeteer
+    const products = await fetchMultipleProductsWithPuppeteer(limitedUrls, {
+        delay: 2000, // 2 seconds between batches
+        maxConcurrent: 2, // 2 concurrent requests per batch (conservative for seeding)
     });
 
     if (products.length === 0) {
