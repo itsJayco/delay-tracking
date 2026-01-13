@@ -1,23 +1,20 @@
-name: Intelligent Price Tracking
+﻿name: Intelligent Price Tracking
 
 on:
   schedule:
-    # Run twice daily: 9 AM and 9 PM Colombia Time (UTC-5)
-    # 9 AM COT = 2 PM UTC
-    # 9 PM COT = 2 AM UTC (next day)
-    - cron: ''0 14 * * *''  # 9 AM COT
-    - cron: ''0 2 * * *''   # 9 PM COT
+    - cron: '0 14 * * *'
+    - cron: '0 2 * * *'
   
-  workflow_dispatch:  # Allow manual triggers
+  workflow_dispatch:
     inputs:
       limit:
-        description: ''Max products to track''
+        description: 'Max products to track'
         required: false
-        default: ''100''
+        default: '100'
       merchant:
-        description: ''Specific merchant (optional)''
+        description: 'Specific merchant (optional)'
         required: false
-        default: ''''
+        default: ''
 
 jobs:
   track-prices:
@@ -37,8 +34,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ''20''
-          cache: ''pnpm''
+          node-version: '20'
+          cache: 'pnpm'
       
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -46,9 +43,9 @@ jobs:
       - name: Run price tracking
         run: |
           if [ -n "${{ github.event.inputs.merchant }}" ]; then
-            pnpm track:prices -- --limit ${{ github.event.inputs.limit || ''100'' }} --merchant ${{ github.event.inputs.merchant }}
+            pnpm track:prices -- --limit ${{ github.event.inputs.limit || '100' }} --merchant ${{ github.event.inputs.merchant }}
           else
-            pnpm track:prices -- --limit ${{ github.event.inputs.limit || ''100'' }}
+            pnpm track:prices -- --limit ${{ github.event.inputs.limit || '100' }}
           fi
       
       - name: Upload tracking logs
